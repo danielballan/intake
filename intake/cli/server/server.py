@@ -9,6 +9,7 @@ from __future__ import print_function
 import time
 from uuid import uuid4
 
+from concurrent.futures import ThreadPoolExecutor
 import itertools
 import logging
 import msgpack
@@ -182,6 +183,7 @@ class ServerSourceHandler(tornado.web.RequestHandler):
     def initialize(self, catalog, cache, auth):
         self._catalog = catalog
         self._cache = cache
+        self._executor = ThreadPoolExecutor()
         self.auth = auth
 
     def get(self):
@@ -278,9 +280,9 @@ class ServerSourceHandler(tornado.web.RequestHandler):
             if direct_access == 'forbid' or \
                     (direct_access == 'allow' and not client_has_plugin):
                 logger.debug("Opening entry %s" % entry)
-                source = entry.get(**user_parameters)
+                source = yield self._executor.submit(entry.get, **user_parameters)
+                source.on_server = True
                 try:
-                    source.on_server = True
                     source.discover()
                 except Exception as e:
                     raise tornado.web.HTTPError(status_code=400,
@@ -321,10 +323,11 @@ class ServerSourceHandler(tornado.web.RequestHandler):
 
             logger.debug("Read partition %s" % partition)
             if partition is not None:
-                chunk = source.read_partition(partition)
+                chunk = yield self._executor.submit(source.read_partition,
+                                                    partition)
             else:
                 assert source.npartitions < 2
-                chunk = source.read()
+                chunk = yield self._executor.submit(source, read)
 
             data = chunk_encoder.encode(chunk, source.container)
             msg = dict(format=chunk_encoder.format_name,

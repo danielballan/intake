@@ -1,0 +1,26 @@
+import intake
+from concurrent.futures import ProcessPoolExecutor
+import time
+
+
+cat = intake.Catalog('intake://localhost:5000')
+ds = cat['stuff']()
+# print('read all')
+# %timeit ds.read()
+# print('read one chunk')
+# %timeit next(ds.read_chunked())
+
+executor = ProcessPoolExecutor()
+
+def read():
+    return ds.read()
+
+def read_chunked():
+    return next(ds.read_chunked())
+
+complete = executor.submit(read)
+time.sleep(0.01)
+chunk = executor.submit(read_chunked)
+%time chunk.result()
+%time complete.result()
+executor.shutdown()
