@@ -92,6 +92,7 @@ def get_partition(url, headers, source_id, container, partition):
     partition: serializable
         Part of data to fetch, e.g., an integer for a dataframe.
     """
+    print('get_partition', url, headers, source_id, container, partition)
     accepted_formats = list(serializer.format_registry.keys())
     accepted_compression = list(serializer.compression_registry.keys())
     payload = dict(action='read',

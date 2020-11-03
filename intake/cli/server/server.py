@@ -2,8 +2,8 @@
 # Copyright (c) 2012 - 2018, Anaconda, Inc. and Intake contributors
 # All rights reserved.
 #
-# The full license is in the LICENSE file, distributed with this software.
-#-----------------------------------------------------------------------------
+# The full license is in the LICENSE file, distributed with this software.  #-----------------------------------------------------------------------------
+from concurrent.futures import ThreadPoolExecutor
 import time
 from uuid import uuid4
 
@@ -19,7 +19,10 @@ from intake.container import serializer
 from intake.utils import remake_instance
 from intake import __version__
 from intake.compat import unpack_kwargs, pack_kwargs
+import tornado.log
+
 logger = logging.getLogger('intake')
+tornado.log.enable_pretty_logging()
 
 
 class IntakeServer(object):
@@ -187,6 +190,7 @@ class ServerSourceHandler(tornado.web.RequestHandler):
         self._catalog = catalog
         self._cache = cache
         self.auth = auth
+        self._executor = ThreadPoolExecutor()
 
     def get(self):
         """
@@ -334,6 +338,8 @@ class ServerSourceHandler(tornado.web.RequestHandler):
                 self.finish()
 
         elif action == 'read':
+            import time
+            t0 = time.perf_counter()
             source_id = request['source_id']
             source = self._cache.get(source_id)
             accepted_formats = request['accepted_formats']
@@ -346,16 +352,23 @@ class ServerSourceHandler(tornado.web.RequestHandler):
 
             logger.debug("Read partition %s" % partition)
             if partition is not None:
-                chunk = source.read_partition(partition)
+                chunk = yield self._executor.submit(source.read_partition, partition)
+                print("read parition took", time.perf_counter() - t0)
             else:
                 assert source.npartitions < 2
                 chunk = source.read()
+                print("read took", time.perf_counter() - t0)
 
+            t1 = time.perf_counter()
             data = chunk_encoder.encode(chunk, source.container)
+            print('chunk encoding took', time.perf_counter() - t1)
+            t2 = time.perf_counter()
             msg = dict(format=chunk_encoder.format_name,
                        compression=chunk_encoder.compressor_name,
                        container=source.container, data=data)
-            self.write(msgpack.packb(msg, **pack_kwargs))
+            encoded_for_writing = msgpack.packb(msg, **pack_kwargs)
+            print('msgpack encoding took', time.perf_counter() - t2)
+            self.write(encoded_for_writing)
             self.flush()
             self._cache.touch(source_id)  # keep source alive
 
