@@ -22,7 +22,9 @@ from intake.compat import unpack_kwargs, pack_kwargs
 import tornado.log
 
 logger = logging.getLogger('intake')
-tornado.log.enable_pretty_logging()
+tornado_logger = logging.getLogger('tornado.access')
+tornado_logger.setLevel('DEBUG')
+tornado.log.enable_pretty_logging(logger=tornado_logger)
 
 
 class IntakeServer(object):
